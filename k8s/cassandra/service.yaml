@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra
+  namespace: job-scheduler
+  labels:
+    app: cassandra
+spec:
+  clusterIP: None  # Headless service for StatefulSet DNS
+  selector:
+    app: cassandra
+  ports:
+    - name: cql
+      port: 9042
+      targetPort: 9042
+    - name: intra-node
+      port: 7000
+      targetPort: 7000
+    - name: jmx
+      port: 7199
+      targetPort: 7199

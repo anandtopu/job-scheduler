@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  namespace: job-scheduler
+  labels:
+    app: scheduler
+spec:
+  # IMPORTANT: Always run exactly 1 replica to avoid double-scheduling
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+  strategy:
+    # Recreate ensures only one scheduler runs at a time
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: job-scheduler-scheduler:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: job-scheduler-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import redis; r = redis.Redis(host='redis.job-scheduler.svc.cluster.local'); r.ping()"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+      terminationGracePeriodSeconds: 30

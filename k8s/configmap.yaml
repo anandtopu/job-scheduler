@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-scheduler-config
+  namespace: job-scheduler
+data:
+  CASSANDRA_HOSTS: "cassandra-0.cassandra.job-scheduler.svc.cluster.local,cassandra-1.cassandra.job-scheduler.svc.cluster.local,cassandra-2.cassandra.job-scheduler.svc.cluster.local"
+  CASSANDRA_PORT: "9042"
+  CASSANDRA_KEYSPACE: "job_scheduler"
+  CASSANDRA_REPLICATION_FACTOR: "3"
+  REDIS_HOST: "redis.job-scheduler.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  QUEUE_PENDING_KEY: "queue:pending"
+  QUEUE_PROCESSING_KEY: "queue:processing"
+  QUEUE_VISIBILITY_TIMEOUT: "30"
+  QUEUE_HEARTBEAT_INTERVAL: "15"
+  SCHEDULER_POLL_INTERVAL: "300"
+  SCHEDULER_LOOKAHEAD_SECONDS: "360"
+  WORKER_CONCURRENCY: "10"
+  WORKER_MAX_RETRIES: "3"
+  WORKER_RETRY_BASE_DELAY: "5"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  LOG_LEVEL: "INFO"

@@ -1,0 +1,125 @@
+version: "3.9"
+
+services:
+  # -----------------------------------------------------------------------
+  # Cassandra - Distributed database for job and execution persistence
+  # -----------------------------------------------------------------------
+  cassandra:
+    image: cassandra:4.1
+    container_name: job-scheduler-cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: job_scheduler_cluster
+      CASSANDRA_DC: dc1
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 512M
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    networks:
+      - job-scheduler-net
+
+  # -----------------------------------------------------------------------
+  # Redis - Message queue and deduplication cache
+  # -----------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: job-scheduler-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-scheduler-net
+
+  # -----------------------------------------------------------------------
+  # API - FastAPI REST interface
+  # -----------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: job-scheduler-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.example
+    environment:
+      CASSANDRA_HOSTS: cassandra
+      REDIS_HOST: redis
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure:5
+    networks:
+      - job-scheduler-net
+
+  # -----------------------------------------------------------------------
+  # Scheduler - Polls DB and enqueues jobs to Redis
+  # -----------------------------------------------------------------------
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler.Dockerfile
+    container_name: job-scheduler-scheduler
+    env_file:
+      - .env.example
+    environment:
+      CASSANDRA_HOSTS: cassandra
+      REDIS_HOST: redis
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure:5
+    networks:
+      - job-scheduler-net
+
+  # -----------------------------------------------------------------------
+  # Worker - Consumes jobs from Redis queue and executes them
+  # Deploy multiple replicas for parallelism
+  # -----------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    env_file:
+      - .env.example
+    environment:
+      CASSANDRA_HOSTS: cassandra
+      REDIS_HOST: redis
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure:5
+    deploy:
+      replicas: 2
+    networks:
+      - job-scheduler-net
+
+volumes:
+  cassandra_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  job-scheduler-net:
+    driver: bridge
