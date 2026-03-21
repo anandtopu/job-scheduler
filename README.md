@@ -1,6 +1,6 @@
 # Job Scheduler
 
-A production-grade distributed job scheduling system built with Python, FastAPI, Apache Cassandra, and Redis.
+This is a production-grade distributed job scheduling system built with Python, FastAPI, Apache Cassandra, and Redis.
 
 ## Architecture Overview
 
@@ -287,5 +287,6 @@ Failed jobs use exponential backoff:
 - **Cassandra**: 3-node cluster with RF=3; time-bucketed partitions prevent hotspots
 - **Redis**: Single instance sufficient for most workloads; Redis Cluster for massive scale
 - **Queue throughput**: Workers dequeue in batches and execute concurrently (10 threads/worker)
-#   j o b - s c h e d u l e r  
+#   j o b - s c h e d u l e r 
+ 
  
