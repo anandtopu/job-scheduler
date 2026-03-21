@@ -287,6 +287,3 @@ Failed jobs use exponential backoff:
 - **Cassandra**: 3-node cluster with RF=3; time-bucketed partitions prevent hotspots
 - **Redis**: Single instance sufficient for most workloads; Redis Cluster for massive scale
 - **Queue throughput**: Workers dequeue in batches and execute concurrently (10 threads/worker)
-#   j o b - s c h e d u l e r 
- 
- 
