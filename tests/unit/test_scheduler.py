@@ -15,6 +15,8 @@ from src.models.job import Job
 from src.queue.messages import JobMessage
 from src.queue.redis_queue import RedisQueue
 from src.scheduler.scheduler import Scheduler
+# pylint: disable=unused-import
+from tests.conftest import _make_empty_result  # noqa
 
 
 @pytest.fixture
@@ -32,10 +34,7 @@ def mock_cassandra():
     client = MagicMock()
     session = MagicMock()
     client.get_session.return_value = session
-    result = MagicMock()
-    result.one.return_value = None
-    result.__iter__ = MagicMock(return_value=iter([]))
-    client.execute.return_value = result
+    client.execute.return_value = _make_empty_result()
     return client
 
 

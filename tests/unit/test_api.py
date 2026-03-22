@@ -1,6 +1,5 @@
 """Unit tests for the FastAPI API endpoints."""
 
-import json
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -12,27 +11,10 @@ from fastapi.testclient import TestClient
 from src.api.app import create_app
 from src.db.repositories.execution_repo import ExecutionRepository
 from src.db.repositories.job_repo import JobRepository
-from src.models.enums import ExecutionStatus, JobStatus, ScheduleType
-from src.models.execution import Execution
+from src.models.enums import JobStatus, ScheduleType
 from src.models.job import Job
 from src.queue.redis_queue import RedisQueue
 from src.scheduler.scheduler import Scheduler
-
-
-@pytest.fixture
-def mock_cassandra():
-    client = MagicMock()
-    session = MagicMock()
-    result = MagicMock()
-    result.one.return_value = None
-    result.__iter__ = MagicMock(return_value=iter([]))
-    result.current_rows = []
-    result.has_more_pages = False
-    result.paging_state = None
-    session.execute.return_value = result
-    client.get_session.return_value = session
-    client.execute.return_value = result
-    return client
 
 
 @pytest.fixture
@@ -41,23 +23,23 @@ def fake_redis_client():
 
 
 @pytest.fixture
-def api_client(mock_cassandra, fake_redis_client):
+def api_client(mock_cassandra_client, fake_redis_client):
     """Create a TestClient with all dependencies mocked."""
     app = create_app()
 
     queue = RedisQueue(client=fake_redis_client)
-    job_repo = JobRepository(mock_cassandra)
-    exec_repo = ExecutionRepository(mock_cassandra)
-    scheduler = Scheduler(queue=queue, cassandra_client=mock_cassandra)
+    job_repo = JobRepository(mock_cassandra_client)
+    exec_repo = ExecutionRepository(mock_cassandra_client)
+    scheduler = Scheduler(queue=queue, cassandra_client=mock_cassandra_client)
 
-    app.state.cassandra_client = mock_cassandra
+    app.state.cassandra_client = mock_cassandra_client
     app.state.job_repo = job_repo
     app.state.exec_repo = exec_repo
     app.state.queue = queue
     app.state.scheduler = scheduler
 
     with TestClient(app, raise_server_exceptions=False) as client:
-        yield client, job_repo, exec_repo, scheduler, mock_cassandra
+        yield client, job_repo, exec_repo, scheduler, mock_cassandra_client
 
 
 def make_sample_job(

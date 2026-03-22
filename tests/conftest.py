@@ -1,6 +1,5 @@
 """Shared pytest fixtures for unit and integration tests."""
 
-import json
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -16,9 +15,21 @@ from src.models.job import Job
 from src.queue.redis_queue import RedisQueue
 
 
+# pylint: disable=duplicate-code
 # ---------------------------------------------------------------------------
 # Infrastructure mocks
 # ---------------------------------------------------------------------------
+
+
+def _make_empty_result():
+    """Create a mock Cassandra result set."""
+    result = MagicMock()
+    result.one.return_value = None
+    result.__iter__ = MagicMock(return_value=iter([]))
+    result.current_rows = []
+    result.has_more_pages = False
+    result.paging_state = None
+    return result
 
 
 @pytest.fixture
@@ -26,13 +37,7 @@ def mock_cassandra_session():
     """Provide a MagicMock Cassandra session."""
     session = MagicMock()
     # Default: execute returns an empty result set
-    result = MagicMock()
-    result.one.return_value = None
-    result.__iter__ = MagicMock(return_value=iter([]))
-    result.current_rows = []
-    result.has_more_pages = False
-    result.paging_state = None
-    session.execute.return_value = result
+    session.execute.return_value = _make_empty_result()
     return session
 
 

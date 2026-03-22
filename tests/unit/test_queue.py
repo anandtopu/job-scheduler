@@ -173,6 +173,7 @@ class TestRequeueStuck:
         msg = make_message(execution_time=time.time() - 100)
         expired_deadline = time.time() - 10  # Already expired
 
+        # pylint: disable=protected-access
         queue._redis.zadd(
             settings.QUEUE_PROCESSING_KEY,
             {msg.to_json(): expired_deadline},

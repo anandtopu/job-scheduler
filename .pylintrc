@@ -1,0 +1,44 @@
+[MASTER]
+load-plugins=
+
+[MESSAGES CONTROL]
+disable=
+    # C0103: Invalid name - for flexibility with naming conventions
+    invalid-name,
+    # C0111: Missing docstring - verbose requirement
+    missing-docstring,
+    # R0801: Similar lines - tests often have similar mock setup
+    duplicate-code,
+    # W0212: Protected member access - acceptable in tests
+    protected-access,
+    # W0621: Redefined outer name - common in pytest fixtures
+    redefined-outer-name,
+    # R0913: Too many arguments - can happen in factories
+    too-many-arguments,
+    # R0914: Too many local variables - can happen
+    too-many-locals,
+    # R0915: Too many statements - can happen in complex tests
+    too-many-statements,
+    # W0613: Unused argument - common with pytest fixtures and API handlers
+    unused-argument,
+    # R0903: Too few public methods - data classes and exceptions are okay
+    too-few-public-methods,
+
+[FORMAT]
+max-line-length=100
+
+[DESIGN]
+max-attributes=10
+
+[BASIC]
+# Good variable names which should always be accepted
+good-names=
+    i,j,k,
+    ex,Run,_,
+    id,x,y,z,
+    df,db,e
+
+[LOGGING]
+logging-format-style=new
+
+

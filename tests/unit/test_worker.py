@@ -1,6 +1,5 @@
 """Unit tests for the Worker service."""
 
-import json
 import time
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -9,6 +8,7 @@ from uuid import uuid4
 import fakeredis
 import pytest
 
+from src.core.config import settings
 from src.models.enums import ExecutionStatus, JobStatus, ScheduleType
 from src.models.execution import Execution
 from src.models.job import Job
@@ -221,14 +221,14 @@ class TestHeartbeat:
 
         # Get initial deadline
         initial_score = mock_queue._redis.zscore(
-            mock_queue._processing_key, dequeued.to_json()
+            settings.QUEUE_PROCESSING_KEY, dequeued.to_json()
         )
 
         time.sleep(0.01)
         mock_queue.heartbeat(dequeued)
 
         new_score = mock_queue._redis.zscore(
-            mock_queue._processing_key, dequeued.to_json()
+            settings.QUEUE_PROCESSING_KEY, dequeued.to_json()
         )
 
         assert new_score is not None
@@ -245,8 +245,9 @@ class TestHeartbeat:
 
         # Manually expire the processing deadline
         expired_deadline = time.time() - 1
+        # pylint: disable=protected-access
         mock_queue._redis.zadd(
-            mock_queue._processing_key,
+            settings.QUEUE_PROCESSING_KEY,
             {msg.to_json(): expired_deadline},
         )
 

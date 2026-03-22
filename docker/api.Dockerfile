@@ -1,5 +1,5 @@
 # Multi-stage build for the Job Scheduler API service
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 
 # Final image
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
