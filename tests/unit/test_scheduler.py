@@ -2,17 +2,15 @@
 
 import calendar
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import fakeredis
 import pytest
-from freezegun import freeze_time
 
 from src.models.enums import ExecutionStatus, JobStatus, ScheduleType
 from src.models.execution import Execution
 from src.models.job import Job
-from src.queue.messages import JobMessage
 from src.queue.redis_queue import RedisQueue
 from src.scheduler.scheduler import Scheduler
 # pylint: disable=unused-import
