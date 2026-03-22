@@ -3,7 +3,7 @@
 This is a production-grade distributed job scheduling system built with Python, FastAPI, Apache Cassandra, and Redis.
 
 ## Architecture Overview
-
+For full architecture diagrams and flows, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 ```
                           ┌─────────────────────────────────────┐
                           │           CLIENT / USER              │
