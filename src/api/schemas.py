@@ -67,49 +67,59 @@ class CreateJobRequest(BaseModel):
     @model_validator(mode="after")
     def validate_schedule_expression(self) -> "CreateJobRequest":
         """Validate schedule_expression based on schedule_type."""
-        schedule_type = self.schedule_type
         expr = self.schedule_expression
-
-        if schedule_type == ScheduleType.IMMEDIATE:
-            if expr is not None:
-                raise ValueError("schedule_expression must be None for IMMEDIATE schedule type.")
-
-        elif schedule_type == ScheduleType.DATETIME:
-            if not expr:
-                raise ValueError("schedule_expression is required for DATETIME schedule type.")
-            try:
-                scheduled_dt = datetime.fromisoformat(expr.rstrip("Z"))
-            except ValueError as exc:
-                raise ValueError(f"schedule_expression must be a valid ISO datetime: {exc}") from exc
-            now = datetime.utcnow()
-            if (now - scheduled_dt).total_seconds() > 60:
-                raise ValueError(f"schedule_expression must be a future datetime. Got: {expr}")
-
-        elif schedule_type == ScheduleType.CRON:
-            if not expr:
-                raise ValueError("schedule_expression is required for CRON schedule type.")
-            try:
-                cron = croniter(expr, datetime.utcnow())
-                next_run = cron.get_next(datetime)
-                if next_run is None:
-                    raise ValueError("CRON expression has no future occurrences.")
-            except (CroniterBadCronError, KeyError) as exc:
-                raise ValueError(f"Invalid CRON expression '{expr}': {exc}") from exc
-
-        elif schedule_type == ScheduleType.INTERVAL:
-            # INTERVAL: schedule_expression is a positive integer (seconds)
-            if not expr:
-                raise ValueError("schedule_expression (seconds) is required for INTERVAL schedule type.")
-            try:
-                interval = int(expr)
-                if interval <= 0:
-                    raise ValueError("INTERVAL must be a positive number of seconds.")
-            except ValueError as exc:
-                raise ValueError(
-                    f"INTERVAL schedule_expression must be a positive integer (seconds). Got: '{expr}'"
-                ) from exc
+        validators = {
+            ScheduleType.IMMEDIATE: self._validate_immediate_expression,
+            ScheduleType.DATETIME: self._validate_datetime_expression,
+            ScheduleType.CRON: self._validate_cron_expression,
+            ScheduleType.INTERVAL: self._validate_interval_expression,
+        }
+        validator = validators.get(self.schedule_type)
+        if validator is not None:
+            validator(expr)
 
         return self
+
+    def _validate_immediate_expression(self, expr: Optional[str]) -> None:
+        if expr is not None:
+            raise ValueError("schedule_expression must be None for IMMEDIATE schedule type.")
+
+    def _validate_datetime_expression(self, expr: Optional[str]) -> None:
+        if not expr:
+            raise ValueError("schedule_expression is required for DATETIME schedule type.")
+        try:
+            scheduled_dt = datetime.fromisoformat(expr.rstrip("Z"))
+        except ValueError as exc:
+            raise ValueError(f"schedule_expression must be a valid ISO datetime: {exc}") from exc
+
+        now = datetime.utcnow()
+        if (now - scheduled_dt).total_seconds() > 60:
+            raise ValueError(f"schedule_expression must be a future datetime. Got: {expr}")
+
+    def _validate_cron_expression(self, expr: Optional[str]) -> None:
+        if not expr:
+            raise ValueError("schedule_expression is required for CRON schedule type.")
+        try:
+            cron = croniter(expr, datetime.utcnow())
+            next_run = cron.get_next(datetime)
+            if next_run is None:
+                raise ValueError("CRON expression has no future occurrences.")
+        except (CroniterBadCronError, KeyError) as exc:
+            raise ValueError(f"Invalid CRON expression '{expr}': {exc}") from exc
+
+    def _validate_interval_expression(self, expr: Optional[str]) -> None:
+        # INTERVAL: schedule_expression is a positive integer (seconds)
+        if not expr:
+            raise ValueError("schedule_expression (seconds) is required for INTERVAL schedule type.")
+        try:
+            interval = int(expr)
+            if interval <= 0:
+                raise ValueError("INTERVAL must be a positive number of seconds.")
+        except ValueError as exc:
+            raise ValueError(
+                f"INTERVAL schedule_expression must be a positive integer (seconds). Got: '{expr}'"
+            ) from exc
+
 
 
 class UpdateJobRequest(BaseModel):

@@ -161,7 +161,7 @@ async def get_workers(request: Request) -> dict:
         for key in worker_keys:
             raw = redis.hgetall(key)
             if raw:
-                workers.append({k: v for k, v in raw.items()})
+                workers.append(dict(raw.items()))
         return {
             "workers": workers,
             "count": len(workers),

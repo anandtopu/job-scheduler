@@ -94,7 +94,7 @@ class WorkerMetrics:
 
     def to_dict(self) -> dict:
         with self._lock:
-            avg = (self.total_duration_ms / max(self.executions_succeeded, 1))
+            avg = self.total_duration_ms / max(self.executions_succeeded, 1)
             uptime = int(time.time() - self.started_at)
             return {
                 "worker_id": self.worker_id,

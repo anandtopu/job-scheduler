@@ -316,7 +316,6 @@ async def update_job(
 
     # For other fields, rebuild and re-persist (Cassandra UPDATE by PK)
     import json
-    from datetime import datetime as dt
     update_parts = []
     params = []
 
@@ -345,7 +344,7 @@ async def update_job(
 
     if update_parts:
         update_parts.append("updated_at = %s")
-        params.append(dt.utcnow())
+        params.append(datetime.utcnow())
         params.append(job_id)
         query = f"UPDATE jobs SET {', '.join(update_parts)} WHERE job_id = %s"
         job_repo._client.execute(query, tuple(params))
