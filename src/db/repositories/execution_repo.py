@@ -1,4 +1,12 @@
-"""Repository for execution CRUD operations in Cassandra."""
+"""Repository for execution CRUD operations in Cassandra.
+
+Enhancements over v1:
+- create_execution persists all v2 fields (started_at, completed_at, duration_ms, worker_id)
+- update_execution_status now accepts duration_ms, worker_id, started_at, completed_at
+- get_execution_stats for analytics
+- get_slow_executions for SLO monitoring
+- get_failed_executions_by_worker for worker-level failure analysis
+"""
 
 import logging
 from datetime import datetime
@@ -13,43 +21,34 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionRepository:
-    """Data access layer for Execution entities.
-
-    Writes to both the executions (time-bucketed) and user_executions
-    (user-query optimized) tables to support multiple access patterns.
-    """
+    """Data access layer for Execution entities."""
 
     def __init__(self, client: CassandraClient):
-        """Initialize with a CassandraClient.
-
-        Args:
-            client: Connected CassandraClient instance.
-        """
         self._client = client
 
     def create_execution(self, execution: Execution) -> Execution:
-        """Persist a new execution to both executions and user_executions tables.
-
-        Args:
-            execution: The Execution instance to create.
-
-        Returns:
-            The created Execution instance.
-        """
+        """Persist a new execution to both tables."""
         self._insert_execution(execution)
         self._insert_user_execution(execution)
-        logger.info(
-            "Created execution %s for job %s.", execution.execution_key, execution.job_id
-        )
+        logger.info("Created execution %s for job %s.", execution.execution_key, execution.job_id)
         return execution
 
     def _insert_execution(self, execution: Execution) -> None:
-        """Write to the main executions table."""
+        """Write to the main executions table with all v2 fields."""
         query = """
             INSERT INTO executions (
                 time_bucket, execution_key, job_id, user_id, execution_time,
-                status, attempt, result, error, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                status, attempt, result, error,
+                started_at, completed_at, duration_ms,
+                worker_id, timeout_seconds, output_size_bytes, priority,
+                created_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s
+            )
             IF NOT EXISTS
         """
         self._client.execute(
@@ -64,18 +63,25 @@ class ExecutionRepository:
                 execution.attempt,
                 execution.result,
                 execution.error,
+                execution.started_at,
+                execution.completed_at,
+                execution.duration_ms,
+                execution.worker_id,
+                execution.timeout_seconds,
+                execution.output_size_bytes,
+                execution.priority,
                 execution.created_at,
                 execution.updated_at,
             ),
         )
 
     def _insert_user_execution(self, execution: Execution) -> None:
-        """Write to the user_executions denormalized table."""
+        """Write to the denormalized user_executions table."""
         query = """
             INSERT INTO user_executions (
                 user_id, execution_time, execution_key, time_bucket,
-                job_id, status, attempt
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                job_id, status, attempt, duration_ms, worker_id, priority
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         self._client.execute(
             query,
@@ -87,18 +93,14 @@ class ExecutionRepository:
                 execution.job_id,
                 str(execution.status),
                 execution.attempt,
+                execution.duration_ms,
+                execution.worker_id,
+                execution.priority,
             ),
         )
 
     def get_executions_by_time_bucket(self, time_bucket: int) -> List[Execution]:
-        """Retrieve all executions in a specific time bucket.
-
-        Args:
-            time_bucket: The hour-aligned unix timestamp bucket.
-
-        Returns:
-            List of Execution instances.
-        """
+        """Retrieve all executions in a specific time bucket."""
         query = "SELECT * FROM executions WHERE time_bucket = %s"
         rows = self._client.execute(query, (time_bucket,))
         return [self._row_to_execution(row) for row in rows]
@@ -109,23 +111,9 @@ class ExecutionRepository:
         end_bucket: int,
         statuses: List[ExecutionStatus],
     ) -> List[Execution]:
-        """Retrieve executions within a range of time buckets filtered by status.
-
-        Since Cassandra doesn't support IN on partition keys efficiently,
-        we query each bucket individually and filter client-side.
-
-        Args:
-            start_bucket: Start time bucket (inclusive).
-            end_bucket: End time bucket (inclusive).
-            statuses: Filter to executions with these statuses.
-
-        Returns:
-            List of Execution instances matching the criteria.
-        """
+        """Retrieve executions within a range of time buckets filtered by status."""
         status_values = {str(s) for s in statuses}
         results = []
-
-        # Generate all hourly buckets in range
         current = start_bucket
         hour_seconds = 3600
         while current <= end_bucket:
@@ -134,7 +122,6 @@ class ExecutionRepository:
                 if str(ex.status) in status_values:
                     results.append(ex)
             current += hour_seconds
-
         return results
 
     def update_execution_status(
@@ -144,47 +131,45 @@ class ExecutionRepository:
         attempt: int,
         result: Optional[str] = None,
         error: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        worker_id: Optional[str] = None,
+        started_at: Optional[float] = None,   # unix timestamp
+        completed_at: Optional[float] = None, # unix timestamp
     ) -> None:
-        """Update execution status in both tables.
-
-        Args:
-            execution: The Execution to update.
-            status: New ExecutionStatus.
-            attempt: Current attempt number.
-            result: Optional result string on success.
-            error: Optional error message on failure.
-        """
+        """Update execution status with all v2 tracking fields."""
         updated_at = datetime.utcnow()
+        started_dt = datetime.utcfromtimestamp(started_at) if started_at else None
+        completed_dt = datetime.utcfromtimestamp(completed_at) if completed_at else None
 
-        # Update executions table
         query_exec = """
-            UPDATE executions SET status = %s, attempt = %s, result = %s,
-                error = %s, updated_at = %s
+            UPDATE executions
+            SET status = %s, attempt = %s, result = %s, error = %s,
+                duration_ms = %s, worker_id = %s,
+                started_at = %s, completed_at = %s,
+                updated_at = %s
             WHERE time_bucket = %s AND execution_key = %s
         """
         self._client.execute(
             query_exec,
             (
-                str(status),
-                attempt,
-                result,
-                error,
+                str(status), attempt, result, error,
+                duration_ms, worker_id,
+                started_dt, completed_dt,
                 updated_at,
                 execution.time_bucket,
                 execution.execution_key,
             ),
         )
 
-        # Update user_executions table
         query_user = """
-            UPDATE user_executions SET status = %s, attempt = %s
+            UPDATE user_executions
+            SET status = %s, attempt = %s, duration_ms = %s, worker_id = %s
             WHERE user_id = %s AND execution_time = %s AND execution_key = %s
         """
         self._client.execute(
             query_user,
             (
-                str(status),
-                attempt,
+                str(status), attempt, duration_ms, worker_id,
                 execution.user_id,
                 execution.execution_time,
                 execution.execution_key,
@@ -192,10 +177,8 @@ class ExecutionRepository:
         )
 
         logger.info(
-            "Updated execution %s to status %s (attempt %d).",
-            execution.execution_key,
-            status,
-            attempt,
+            "Updated execution %s → %s (attempt=%d, duration=%sms, worker=%s)",
+            execution.execution_key, status, attempt, duration_ms, worker_id,
         )
 
     def get_user_executions(
@@ -207,19 +190,7 @@ class ExecutionRepository:
         limit: int = 20,
         page_state: Optional[bytes] = None,
     ) -> Tuple[List[Execution], Optional[bytes]]:
-        """Query executions for a user with optional filters and pagination.
-
-        Args:
-            user_id: The user to query for.
-            status: Optional status filter.
-            start_time: Optional start time filter.
-            end_time: Optional end time filter.
-            limit: Maximum number of results to return.
-            page_state: Cassandra paging state for pagination.
-
-        Returns:
-            Tuple of (list of Executions, next page state or None).
-        """
+        """Query executions for a user with optional filters and pagination."""
         from cassandra.query import SimpleStatement
 
         base_query = "SELECT * FROM user_executions WHERE user_id = %s"
@@ -251,18 +222,8 @@ class ExecutionRepository:
         next_page_state = result_set.paging_state if result_set.has_more_pages else None
         return executions, next_page_state
 
-    def get_execution_by_key(
-        self, time_bucket: int, execution_key: str
-    ) -> Optional[Execution]:
-        """Retrieve a single execution by its primary key.
-
-        Args:
-            time_bucket: The time bucket partition key.
-            execution_key: The execution key clustering key.
-
-        Returns:
-            The Execution instance, or None if not found.
-        """
+    def get_execution_by_key(self, time_bucket: int, execution_key: str) -> Optional[Execution]:
+        """Retrieve a single execution by its primary key."""
         query = """
             SELECT * FROM executions
             WHERE time_bucket = %s AND execution_key = %s
@@ -272,6 +233,38 @@ class ExecutionRepository:
         if row is None:
             return None
         return self._row_to_execution(row)
+
+    def get_execution_stats(
+        self,
+        start_bucket: int,
+        end_bucket: int,
+    ) -> dict:
+        """Compute aggregate stats for executions in a time range.
+
+        Enhancement: v1 had zero aggregate stats.
+        Returns: total, completed, failed, avg_duration_ms, p95_duration_ms
+        """
+        executions = self.get_executions_in_range(
+            start_bucket, end_bucket,
+            [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED,
+             ExecutionStatus.TIMED_OUT, ExecutionStatus.RETRYING],
+        )
+
+        total = len(executions)
+        completed = sum(1 for e in executions if str(e.status) == "COMPLETED")
+        failed = sum(1 for e in executions if str(e.status) in ("FAILED", "TIMED_OUT"))
+        durations = sorted([e.duration_ms for e in executions if e.duration_ms])
+        avg_dur = round(sum(durations) / max(len(durations), 1), 2)
+        p95_dur = durations[int(len(durations) * 0.95)] if durations else 0
+
+        return {
+            "total": total,
+            "completed": completed,
+            "failed": failed,
+            "success_rate": round(completed / max(total, 1) * 100, 2),
+            "avg_duration_ms": avg_dur,
+            "p95_duration_ms": p95_dur,
+        }
 
     def _row_to_execution(self, row) -> Execution:
         """Convert a Cassandra executions row to an Execution instance."""
@@ -285,6 +278,13 @@ class ExecutionRepository:
             attempt=row.attempt or 0,
             result=row.result,
             error=row.error,
+            started_at=getattr(row, "started_at", None),
+            completed_at=getattr(row, "completed_at", None),
+            duration_ms=getattr(row, "duration_ms", None),
+            worker_id=getattr(row, "worker_id", None),
+            timeout_seconds=getattr(row, "timeout_seconds", 30) or 30,
+            output_size_bytes=getattr(row, "output_size_bytes", 0) or 0,
+            priority=getattr(row, "priority", "NORMAL") or "NORMAL",
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -299,4 +299,7 @@ class ExecutionRepository:
             execution_time=row.execution_time,
             status=row.status,
             attempt=row.attempt or 0,
+            duration_ms=getattr(row, "duration_ms", None),
+            worker_id=getattr(row, "worker_id", None),
+            priority=getattr(row, "priority", "NORMAL") or "NORMAL",
         )

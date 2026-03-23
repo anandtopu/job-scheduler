@@ -1,3 +1,4 @@
+# Job Scheduler v2 dependencies
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 cassandra-driver>=3.29.0
@@ -10,3 +11,6 @@ httpx>=0.25.0
 python-dotenv>=1.0.0
 setuptools>=68.0.0
 wheel>=0.41.0
+
+# v2 additions
+pytz>=2024.1          # Timezone-aware CRON (pain point: v1 UTC-only)
